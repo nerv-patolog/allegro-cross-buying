@@ -5,12 +5,12 @@ A browser extension for finding common sellers across multiple Allegro.pl produc
 ## Features
 
 - 🔍 Find sellers that offer multiple products you're interested in
-- 📊 Sellers grouped by frequency (see which sellers offer most of your products)
+- 📊 Track products and sellers directly from Allegro pages
 - 💰 Optimize your cart to reach the 45 PLN minimum per seller for free delivery
 - 🎨 Clean Material Design UI with Svelte
 - 🦊 Cross-browser support (Chrome/Chromium and Firefox)
 - 💾 Persistent product list storage
-- ⚡ No API credentials needed - works by parsing seller listing pages
+- ⚡ No server needed - works entirely client-side by scraping page data
 
 ## Installation
 
@@ -31,40 +31,12 @@ cd allegro-seller-finder
 npm install
 ```
 
-3. **Set up the backend server** (required):
-
+3. Generate icon placeholders:
 ```bash
-# Navigate to server directory
-cd server
-
-# Install server dependencies
-npm install
-```
-
-4. **Optional: Configure API key** (for security):
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env and optionally set an API key
-nano .env  # or use your preferred editor
-```
-
-Example `server/.env`:
-```env
-PORT=3000
-API_KEY=your_optional_api_key_here
-```
-
-5. Generate icon placeholders:
-```bash
-# Back to project root
-cd ..
 node scripts/generate-icons.js
 ```
 
-6. Build the extension:
+4. Build the extension:
 
 For Chrome/Chromium:
 ```bash
@@ -92,54 +64,33 @@ npm run build:firefox
 3. Navigate to `dist-firefox` folder
 4. Select the `manifest.json` file
 
-### Start the Backend Server
-
-**IMPORTANT**: The server must be running for the extension to work!
-
-```bash
-cd server
-npm start
-```
-
-You should see:
-```
-Allegro Seller Finder Server running on http://localhost:3000
-```
-
-Keep this terminal window open while using the extension.
-
 ## Usage
 
-1. **Make sure the backend server is running** (`npm start` in `server/` folder)
+1. **Go to an Allegro product page** with multiple sellers:
+   - Find a product you want to buy
+   - Look for the "Inne oferty" (Other offers) section showing all sellers
+   - Make sure you're on the page that lists all sellers for that product
 
-2. **Find the seller listing pages** for your products:
-   - Go to any Allegro product page
-   - Look for the "Inne oferty" (Other offers) section
-   - Click to see all sellers for that product
-   - Copy the URL of the seller listing page
-   - Repeat for at least 2 products you want to buy
+2. **Click the extension icon** - the popup will open
 
-3. **Click the extension icon** - the popup will open
+3. **Add the current product to comparison**:
+   - If no products are saved yet, you'll see an "Add to comparison" button
+   - Click it to scrape the product name and sellers from the current page
+   - The product will be added as a row showing [Product Name] [Number of Sellers] [Remove button]
 
-4. **Add product seller listing URLs** (minimum 2):
-   - Paste the seller listing page URLs into the input fields
-   - Click the **+** button to add each URL
-   - A new empty input will appear below
-   - Add at least 2 URLs to find common sellers
+4. **Repeat for more products**:
+   - Navigate to another Allegro product's seller listing page
+   - Open the extension popup
+   - Click "Add to comparison" again
+   - Add at least 2 products total to enable the Calculate button
 
 5. **Remove products**:
-   - Click the **×** button next to any URL to remove it
+   - Click the remove (×) button next to any product row to delete it
 
-6. **Find common sellers**:
-   - Click the **"Find Common Sellers"** button at the bottom
-   - The extension will parse each page and find sellers
-
-7. **View results grouped by frequency**:
-   - Sellers are grouped by how many products they offer
-   - "All X products" sellers appear first (these sell everything you want!)
-   - Then sellers offering X-1 products, etc.
-   - Click on any seller name to visit their Allegro store
-   - Click "Back to Search" to modify your search
+6. **Calculate common sellers**:
+   - Once you have 2 or more products added, the "Calculate" button becomes enabled
+   - Click "Calculate" to find sellers that appear across multiple products
+   - Results will be logged to the browser console (F12)
 
 ## Development
 
@@ -147,17 +98,15 @@ Keep this terminal window open while using the extension.
 
 ```
 allegro-seller-finder/
-├── server/                 # Backend server (Node.js + Express)
-│   ├── server.js          # Main server file (parses Allegro pages)
-│   ├── package.json       # Server dependencies
-│   └── .env.example       # Environment template
 ├── src/
 │   ├── popup/              # Popup UI (Svelte)
-│   │   ├── Popup.svelte
+│   │   ├── Popup.svelte   # Main UI component
 │   │   ├── popup.html
 │   │   └── popup.js
-│   ├── background/         # Background service worker
-│   │   └── background.js  # Communicates with server
+│   ├── content/            # Content script
+│   │   └── content.js     # Scrapes data from Allegro pages
+│   ├── background/         # Background service worker (optional)
+│   │   └── background.js
 │   ├── manifest.chrome.json
 │   └── manifest.firefox.json
 ├── public/
@@ -170,93 +119,72 @@ allegro-seller-finder/
 
 ### Available Scripts
 
-**Extension:**
 - `npm run dev` - Build and watch for changes (Chrome)
 - `npm run build` - Production build for Chrome
 - `npm run build:firefox` - Production build for Firefox
-
-**Backend Server:**
-- `cd server && npm start` - Start the server
-- `cd server && npm run dev` - Start with auto-reload (development)
 
 ### Tech Stack
 
 - **Frontend**: Svelte 4.2.20
 - **Build Tool**: Vite 5.4.11
-- **Server**: Node.js + Express.js
-- **Parsing**: Cheerio (HTML parsing)
+- **Content Script**: Vanilla JavaScript (DOM scraping)
 - **Icons**: Material Design Icons (SVG paths)
 
 ## How It Works
 
 ### Architecture
 
-1. **Browser Extension** → Communicates with local backend server
-2. **Backend Server** → Parses Allegro seller listing pages
-3. **Seller Comparison** → Finds intersections between seller lists
+1. **User navigates** to an Allegro product seller listing page
+2. **Content script** scrapes the product name and seller names from the page DOM
+3. **Extension popup** stores and displays the collected data
+4. **Calculate function** finds common sellers across saved products
 
 ### Flow
 
-1. **User Input**: You provide URLs to seller listing pages (minimum 2)
-2. **Request to Server**: Extension sends all URLs to the local backend server
-3. **Page Parsing**: Server fetches each URL and parses the HTML to extract seller names
-4. **Frequency Calculation**: Server tracks which sellers appear in which products
-5. **Grouping**: Sellers are grouped by frequency (how many products they offer)
-6. **Results**: Grouped sellers are returned to the extension and displayed
-
-### API Endpoints
-
-**Server Endpoints:**
-- `GET /health` - Check server status
-- `POST /api/sellers/find-common` - Find common sellers across multiple seller listing pages
+1. **User Navigation**: Navigate to an Allegro product page showing all sellers
+2. **Data Collection**: Click "Add to comparison" to scrape product name and seller names
+3. **Storage**: Product data is saved to chrome.storage.local
+4. **Display**: Product appears as a row with [Name] [Seller Count] [Remove]
+5. **Comparison**: Click "Calculate" (enabled when 2+ products) to find common sellers
+6. **Results**: Seller names are logged to console
 
 ## Limitations
 
-- Requires local backend server to be running
-- Requires seller listing page URLs (not direct product pages)
+- Requires seller listing page (not individual product pages)
 - Parsing depends on Allegro's HTML structure (may break if they change their layout)
-- Server must run on localhost (browser extensions can't connect to remote servers without additional config)
-- Minimum 2 seller listing URLs required
+- Minimum 2 products required for comparison
+- Currently outputs results to console only (future: display in UI)
 
 ## Future Enhancements
 
 - [ ] Better icon design
-- [ ] Automatic seller page detection (detect and convert product URLs to seller listing URLs)
+- [ ] Display results in UI instead of console
 - [ ] Price comparison for sellers
 - [ ] Total savings calculator
 - [ ] Export results to clipboard
 - [ ] Dark mode support
-- [ ] Product name display instead of just URLs
-- [ ] Deploy server option (for remote access)
-- [ ] Support for saved searches
 - [ ] Improve HTML parsing robustness (handle multiple page layouts)
-- [ ] Cache parsed results to avoid re-fetching
+- [ ] Show product thumbnails
 
 ## Troubleshooting
 
-### "Cannot connect to server" error
-**Most common issue!**
-- Make sure the backend server is running: `cd server && npm start`
-- Verify the server is running on http://localhost:3000
-- Check the terminal for any error messages from the server
-- If you changed the port, update `VITE_PROXY_URL` in `.env` and rebuild the extension
+### "No product data found" error
+- Make sure you're on an Allegro product page with multiple sellers listed
+- Look for the "Inne oferty" (Other offers) section
+- The page must show seller names (not just a single product page)
 
-### "At least 2 URLs are required" error
-- You need to add at least 2 seller listing page URLs
-- Make sure you're using seller listing pages, not individual product pages
-- Each URL should show multiple sellers for a single product
+### "At least 2 products are required" error
+- You need to add at least 2 products to enable the Calculate button
+- Navigate to different Allegro product pages and click "Add to comparison" for each
 
 ### No sellers found
-- Verify you're using the correct seller listing page URLs
-- Some products might not have overlapping sellers
-- Try with more popular products or different combinations
+- Verify you're on the correct seller listing page
 - Check the browser console (F12) for error messages
-- Check the server terminal for parsing errors
+- The HTML structure may have changed - check the content script selectors
 
 ### Parsing errors
 - The HTML structure of Allegro pages may have changed
-- Check server logs for details
-- You may need to update the CSS selectors in `server/server.js`
+- You may need to update the CSS selectors in content script
 - Open an issue on GitHub if parsing consistently fails
 
 ## License

@@ -1,116 +1,129 @@
 <script>
   import { onMount } from 'svelte';
 
-  let products = [{ url: '', id: crypto.randomUUID(), saved: false }];
+  let products = []; // Array of {id, name, sellers: [...], sellersCount}
   let isLoading = false;
-  let results = null;
   let error = '';
-  let loadingMessage = 'Searching...';
+  let isAdding = false;
 
   onMount(async () => {
     // Load saved products from storage
-    const stored = await chrome.storage.local.get(['products']);
-    if (stored.products && stored.products.length > 0) {
-      products = [
-        ...stored.products.map(url => ({ url, id: crypto.randomUUID(), saved: true })),
-        { url: '', id: crypto.randomUUID(), saved: false }
-      ];
-    }
+    await loadProducts();
   });
 
+  async function loadProducts() {
+    const stored = await chrome.storage.local.get(['products']);
+    if (stored.products && stored.products.length > 0) {
+      products = stored.products;
+    }
+  }
+
   async function saveProducts() {
-    const urls = products.filter(p => p.saved).map(p => p.url);
-    await chrome.storage.local.set({ products: urls });
+    await chrome.storage.local.set({ products: products });
   }
 
-  function addProduct(index) {
-    if (!products[index].url.trim()) {
-      error = 'Please enter a product URL';
-      return;
-    }
-
-    if (!isValidAllegroUrl(products[index].url)) {
-      error = 'Please enter a valid Allegro URL';
-      return;
-    }
-
+  async function addToComparison() {
     error = '';
-    products[index].saved = true;
-    products = [...products, { url: '', id: crypto.randomUUID(), saved: false }];
-    saveProducts();
-  }
-
-  function removeProduct(index) {
-    products = products.filter((_, i) => i !== index);
-    if (products.filter(p => p.saved).length === 0) {
-      products = [{ url: '', id: crypto.randomUUID(), saved: false }];
-    }
-    saveProducts();
-  }
-
-  function updateProduct(index, value) {
-    products[index].url = value;
-    error = '';
-  }
-
-  function handleKeyPress(event, index) {
-    if (event.key === 'Enter' && !products[index].saved) {
-      addProduct(index);
-    }
-  }
-
-  function isValidAllegroUrl(url) {
-    try {
-      const urlObj = new URL(url);
-      // Accept seller listing pages (where all sellers for a product are shown)
-      return urlObj.hostname.includes('allegro.pl');
-    } catch {
-      return false;
-    }
-  }
-
-  async function findCommonSellers() {
-    error = '';
-    results = null;
-
-    const savedProducts = products.filter(p => p.saved);
-
-    if (savedProducts.length < 2) {
-      error = 'Please add at least 2 product seller listing URLs';
-      return;
-    }
-
-    isLoading = true;
-    loadingMessage = `Processing ${savedProducts.length} product${savedProducts.length > 1 ? 's' : ''}...`;
-
-    // Show time estimate if processing multiple products
-    if (savedProducts.length > 2) {
-      const estimatedSeconds = savedProducts.length * 10; // Rough estimate
-      setTimeout(() => {
-        if (isLoading) {
-          loadingMessage = `Still processing... This may take up to ${Math.ceil(estimatedSeconds / 60)} minute${Math.ceil(estimatedSeconds / 60) > 1 ? 's' : ''}`;
-        }
-      }, 5000);
-    }
+    isAdding = true;
 
     try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'findCommonSellers',
-        productUrls: savedProducts.map(p => p.url)
-      });
+      // Get the current active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      if (response.error) {
-        error = response.error;
-      } else {
-        results = response.results;
+      // Check if we're on an Allegro page
+      if (!tab.url || !tab.url.includes('allegro.pl')) {
+        error = 'Please navigate to an Allegro product page';
+        isAdding = false;
+        return;
       }
+
+      // Send message to content script to scrape data
+      const response = await chrome.tabs.sendMessage(tab.id, { action: 'scrapeProductData' });
+
+      if (!response.productName || !response.sellers || response.sellers.length === 0) {
+        error = 'No product data found on this page. Make sure you\'re on a seller listing page.';
+        isAdding = false;
+        return;
+      }
+
+      // Add the product to our list
+      const newProduct = {
+        id: crypto.randomUUID(),
+        name: response.productName,
+        sellers: response.sellers,
+        sellersCount: response.sellersCount
+      };
+
+      products = [...products, newProduct];
+      await saveProducts();
     } catch (err) {
-      error = err.message || 'An error occurred while searching';
+      console.error('Error adding product:', err);
+      error = err.message || 'Failed to scrape product data. Make sure you\'re on an Allegro seller listing page.';
     } finally {
-      isLoading = false;
-      loadingMessage = 'Searching...';
+      isAdding = false;
     }
   }
+
+  async function removeProduct(id) {
+    products = products.filter(p => p.id !== id);
+    await saveProducts();
+  }
+
+  function calculateCommonSellers() {
+    if (products.length < 2) {
+      error = 'At least 2 products are required';
+      return;
+    }
+
+    error = '';
+
+    console.log('=== Allegro Cross-Buying Analysis ===');
+    console.log(`Analyzing ${products.length} products:\n`);
+
+    products.forEach((product, index) => {
+      console.log(`Product ${index + 1}: ${product.name}`);
+      console.log(`Sellers (${product.sellersCount}):`);
+      product.sellers.forEach(seller => {
+        console.log(`  - ${seller}`);
+      });
+      console.log('');
+    });
+
+    // Find common sellers
+    const sellerFrequency = new Map();
+
+    products.forEach(product => {
+      product.sellers.forEach(seller => {
+        sellerFrequency.set(seller, (sellerFrequency.get(seller) || 0) + 1);
+      });
+    });
+
+    // Group by frequency
+    const sellersByFrequency = new Map();
+    sellerFrequency.forEach((count, seller) => {
+      if (!sellersByFrequency.has(count)) {
+        sellersByFrequency.set(count, []);
+      }
+      sellersByFrequency.get(count).push(seller);
+    });
+
+    // Display results
+    console.log('=== Common Sellers Analysis ===\n');
+    const sortedFrequencies = Array.from(sellersByFrequency.keys()).sort((a, b) => b - a);
+
+    sortedFrequencies.forEach(frequency => {
+      const sellers = sellersByFrequency.get(frequency);
+      console.log(`Sellers offering ${frequency} of ${products.length} products:`);
+      sellers.forEach(seller => {
+        console.log(`  - ${seller}`);
+      });
+      console.log('');
+    });
+
+    console.log('=== End of Analysis ===');
+  }
+
+  $: canCalculate = products.length >= 2 && products.every(p => p.sellersCount > 0);
 </script>
 
 <div class="popup">
@@ -119,105 +132,60 @@
   </div>
 
   <div class="content">
-    {#if !results}
+    {#if products.length > 0}
       <div class="product-list">
-        {#each products as product, index (product.id)}
-          <div class="product-item">
-            <input
-              type="text"
-              class="product-input"
-              placeholder="Paste Allegro seller listing page URL..."
-              value={product.url}
-              on:input={(e) => updateProduct(index, e.target.value)}
-              on:keypress={(e) => handleKeyPress(e, index)}
-              disabled={product.saved}
-            />
-            {#if product.saved}
-              <button
-                class="icon-btn remove-btn"
-                on:click={() => removeProduct(index)}
-                title="Remove"
-              >
-                <svg viewBox="0 0 24 24">
-                  <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
-                </svg>
-              </button>
-            {:else if product.url.trim()}
-              <button
-                class="icon-btn add-btn"
-                on:click={() => addProduct(index)}
-                title="Add"
-              >
-                <svg viewBox="0 0 24 24">
-                  <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
-                </svg>
-              </button>
-            {:else}
-              <div class="icon-btn-placeholder"></div>
-            {/if}
+        {#each products as product (product.id)}
+          <div class="product-row">
+            <div class="product-info">
+              <div class="product-name">{product.name}</div>
+              <div class="seller-count">{product.sellersCount} seller{product.sellersCount !== 1 ? 's' : ''}</div>
+            </div>
+            <button
+              class="icon-btn remove-btn"
+              on:click={() => removeProduct(product.id)}
+              title="Remove"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+              </svg>
+            </button>
           </div>
         {/each}
       </div>
-
-      {#if error}
-        <div class="error">{error}</div>
-      {/if}
-
-      <div class="actions">
-        <button
-          class="find-btn"
-          on:click={findCommonSellers}
-          disabled={isLoading}
-        >
-          {#if isLoading}
-            <span class="spinner"></span>
-            {loadingMessage}
-          {:else}
-            <svg class="search-icon" viewBox="0 0 24 24">
-              <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z" />
-            </svg>
-            Find Common Sellers
-          {/if}
-        </button>
-      </div>
-    {:else}
-      <div class="results">
-        <h2>Sellers Found</h2>
-        {#if !results.groupedByFrequency || results.groupedByFrequency.length === 0}
-          <p class="no-results">No sellers found.</p>
-        {:else}
-          <div class="grouped-sellers">
-            {#each results.groupedByFrequency as group}
-              <div class="frequency-group">
-                <div class="frequency-header">
-                  {#if group.frequency === group.totalProducts}
-                    <span class="badge badge-perfect">All {group.totalProducts} products</span>
-                  {:else}
-                    <span class="badge">{group.frequency} of {group.totalProducts} products</span>
-                  {/if}
-                </div>
-                <div class="sellers-list">
-                  {#each group.sellers as seller}
-                    <a href={seller.url} target="_blank" class="seller-link">
-                      {seller.name}
-                      <svg class="external-icon" viewBox="0 0 24 24">
-                        <path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z" />
-                      </svg>
-                    </a>
-                  {/each}
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-        <button class="back-btn" on:click={() => results = null}>
-          <svg viewBox="0 0 24 24">
-            <path d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z" />
-          </svg>
-          Back to Search
-        </button>
-      </div>
     {/if}
+
+    {#if error}
+      <div class="error">{error}</div>
+    {/if}
+
+    <div class="actions">
+      <button
+        class="action-btn add-btn"
+        on:click={addToComparison}
+        disabled={isAdding}
+      >
+        {#if isAdding}
+          <span class="spinner"></span>
+          Adding...
+        {:else}
+          <svg class="icon" viewBox="0 0 24 24">
+            <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+          </svg>
+          Add to comparison
+        {/if}
+      </button>
+
+      <button
+        class="action-btn calculate-btn"
+        on:click={calculateCommonSellers}
+        disabled={!canCalculate}
+      >
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,5V19H5V5H19M6.5,17.25H9.5V18.75H6.5V17.25M6.5,14.25H9.5V15.75H6.5V14.25M6.5,11.25H9.5V12.75H6.5V11.25M6.5,8.25H9.5V9.75H6.5V8.25M6.5,5.25H9.5V6.75H6.5V5.25M11,17.25H18V18.75H11V17.25M11,14.25H18V15.75H11V14.25M11,11.25H18V12.75H11V11.25M11,8.25H18V9.75H11V8.25M11,5.25H18V6.75H11V5.25Z" />
+        </svg>
+        Calculate
+      </button>
+    </div>
   </div>
 </div>
 
@@ -266,48 +234,43 @@
     flex-direction: column;
     gap: 12px;
     margin-bottom: 16px;
+    max-height: 250px;
+    overflow-y: auto;
   }
 
-  .product-item {
+  .product-row {
     display: flex;
-    gap: 8px;
     align-items: center;
-  }
-
-  .product-input {
-    flex: 1;
+    gap: 12px;
     padding: 12px 16px;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    font-size: 14px;
-    font-family: inherit;
-    transition: border-color 0.2s;
-  }
-
-  .product-input:focus {
-    outline: none;
-    border-color: #ff6d00;
-  }
-
-  .product-input:disabled {
     background: #f5f5f5;
-    color: #616161;
-    cursor: not-allowed;
+    border-radius: 4px;
+    border-left: 3px solid #ff6d00;
   }
 
-  .product-input::placeholder {
-    color: #9e9e9e;
+  .product-info {
+    flex: 1;
+    min-width: 0;
   }
 
-  .icon-btn-placeholder {
-    width: 40px;
-    height: 40px;
-    flex-shrink: 0;
+  .product-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #212121;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-bottom: 4px;
+  }
+
+  .seller-count {
+    font-size: 12px;
+    color: #757575;
   }
 
   .icon-btn {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     border: none;
     border-radius: 50%;
     cursor: pointer;
@@ -319,19 +282,9 @@
   }
 
   .icon-btn svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     fill: currentColor;
-  }
-
-  .add-btn {
-    background: #ff6d00;
-    color: white;
-  }
-
-  .add-btn:hover {
-    background: #f57c00;
-    box-shadow: 0 2px 8px rgba(255, 109, 0, 0.3);
   }
 
   .remove-btn {
@@ -362,16 +315,16 @@
     margin-top: auto;
     padding-top: 16px;
     border-top: 1px solid #e0e0e0;
+    display: flex;
+    gap: 12px;
   }
 
-  .find-btn {
-    width: 100%;
-    padding: 14px 24px;
-    background: #ff6d00;
-    color: white;
+  .action-btn {
+    flex: 1;
+    padding: 14px 20px;
     border: none;
     border-radius: 4px;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
@@ -382,19 +335,39 @@
     font-family: inherit;
   }
 
-  .find-btn:hover:not(:disabled) {
+  .add-btn {
+    background: #ff6d00;
+    color: white;
+  }
+
+  .add-btn:hover:not(:disabled) {
     background: #f57c00;
     box-shadow: 0 4px 12px rgba(255, 109, 0, 0.3);
   }
 
-  .find-btn:disabled {
+  .add-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
 
-  .search-icon {
-    width: 20px;
-    height: 20px;
+  .calculate-btn {
+    background: #424242;
+    color: white;
+  }
+
+  .calculate-btn:hover:not(:disabled) {
+    background: #616161;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .calculate-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .icon {
+    width: 18px;
+    height: 18px;
     fill: currentColor;
   }
 
@@ -409,117 +382,5 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
-  }
-
-  .results {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .results h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 500;
-    color: #212121;
-  }
-
-  .no-results {
-    color: #757575;
-    font-size: 14px;
-    text-align: center;
-    padding: 24px;
-  }
-
-  .grouped-sellers {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .frequency-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .frequency-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .badge {
-    display: inline-block;
-    padding: 4px 12px;
-    background: #e0e0e0;
-    color: #424242;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .badge-perfect {
-    background: #ff6d00;
-    color: white;
-  }
-
-  .sellers-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .seller-link {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    background: #f5f5f5;
-    border-radius: 4px;
-    text-decoration: none;
-    color: #212121;
-    transition: all 0.2s;
-    border-left: 3px solid #ff6d00;
-  }
-
-  .seller-link:hover {
-    background: #eeeeee;
-    transform: translateX(4px);
-  }
-
-  .external-icon {
-    width: 18px;
-    height: 18px;
-    fill: #757575;
-  }
-
-  .back-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px 24px;
-    background: white;
-    color: #424242;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-top: auto;
-    font-family: inherit;
-  }
-
-  .back-btn:hover {
-    background: #f5f5f5;
-    border-color: #bdbdbd;
-  }
-
-  .back-btn svg {
-    width: 20px;
-    height: 20px;
-    fill: currentColor;
   }
 </style>

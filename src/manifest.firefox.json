@@ -19,6 +19,13 @@
   "background": {
     "scripts": ["src/background/background.js"]
   },
+  "content_scripts": [
+    {
+      "matches": ["https://allegro.pl/*"],
+      "js": ["src/content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

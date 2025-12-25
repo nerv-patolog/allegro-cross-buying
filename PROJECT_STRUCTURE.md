@@ -5,20 +5,15 @@ allegro-seller-finder/
 │
 ├── src/                           # Source code
 │   ├── popup/                     # Extension popup UI
-│   │   ├── Popup.svelte          # Main popup component (Svelte 5)
+│   │   ├── Popup.svelte          # Main popup component (Svelte 4)
 │   │   ├── popup.html            # Popup HTML entry
 │   │   └── popup.js              # Popup JS entry
 │   │
-│   ├── options/                   # Settings page
-│   │   ├── Options.svelte        # Settings component (Svelte 5)
-│   │   ├── options.html          # Settings HTML entry
-│   │   └── options.js            # Settings JS entry
-│   │
 │   ├── background/                # Background service worker
-│   │   └── background.js         # Allegro API integration & seller logic
+│   │   └── background.js         # Minimal background script
 │   │
 │   ├── content/                   # Content script
-│   │   └── content.js            # Runs on Allegro product pages
+│   │   └── content.js            # Scrapes data from Allegro pages
 │   │
 │   ├── manifest.chrome.json      # Chrome/Chromium manifest (MV3)
 │   └── manifest.firefox.json     # Firefox manifest (MV2)
@@ -36,6 +31,7 @@ allegro-seller-finder/
 ├── dist-chrome/                   # Chrome build output (generated)
 ├── dist-firefox/                  # Firefox build output (generated)
 │
+├── docker-compose.yml            # Utility container for npm commands
 ├── vite.config.js                # Vite build configuration
 ├── svelte.config.js              # Svelte compiler config
 ├── package.json                  # Dependencies & scripts
@@ -48,22 +44,21 @@ allegro-seller-finder/
 ## Key Files
 
 ### Popup ([src/popup/Popup.svelte](src/popup/Popup.svelte))
-- Product URL input list with add/remove
+- Product rows showing name, seller count, and remove button
+- "Add to comparison" button - scrapes current page data
+- "Calculate" button - finds common sellers (enabled with 2+ products)
 - Material Design UI (orange/white/dark grey)
-- Max size: 40vh × 30vw
 - Storage integration for persistence
-- Results display with seller links
+
+### Content Script ([src/content/content.js](src/content/content.js))
+- Scrapes product name from page
+- Extracts seller names using DOM selectors
+- Responds to messages from popup
 
 ### Background ([src/background/background.js](src/background/background.js))
-- Allegro API authentication (Device ID flow)
-- Fetch sellers for each product
-- Calculate seller intersections
-- Update extension icon based on page
-
-### Options ([src/options/Options.svelte](src/options/Options.svelte))
-- Device ID configuration
-- Settings persistence
-- Setup instructions
+- Minimal background script
+- Installation listener
+- Can be extended for notifications, badges, etc.
 
 ### Manifests
 - Chrome MV3: [src/manifest.chrome.json](src/manifest.chrome.json)
@@ -78,8 +73,23 @@ allegro-seller-finder/
 
 ## Technologies
 
-- **Svelte 5** (with runes)
+- **Svelte 4** (UI framework)
 - **Vite 5** (build tool)
-- **Allegro REST API**
+- **Docker** (utility container for npm commands)
 - **Material Design Icons** (SVG paths)
 - **Chrome Extension API** / **WebExtensions API**
+
+## Building the Extension
+
+Using Docker utility container (no Node.js installation required):
+
+```bash
+# Install dependencies
+docker compose run --rm npm install
+
+# Build for Chrome
+docker compose run --rm npm run build
+
+# Build for Firefox
+docker compose run --rm npm run build:firefox
+```

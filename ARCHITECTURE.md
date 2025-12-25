@@ -2,435 +2,229 @@
 
 ## Overview
 
-Allegro Seller Finder uses a **client-server architecture** to parse Allegro seller listing pages and find common sellers across multiple products.
+Allegro Seller Finder is a **client-side browser extension** that scrapes seller data directly from Allegro product pages and finds common sellers across multiple products. No backend server required.
 
 ## Components
 
-### 1. Browser Extension (Client)
+### 1. Browser Extension Popup
 
-**Location:** `src/`
+**Location:** `src/popup/`
 
 **Technologies:**
 - Svelte 4.2.20 for UI components
-- Vite 5.4.11 for building
-- Chrome Extension Manifest V3 / Firefox Manifest V2
+- Chrome Extension Storage API for persistence
 
 **Key Files:**
-- `src/background/background.js` - Handles communication with backend server
-- `src/popup/Popup.svelte` - Main UI for adding seller listing URLs and viewing results
-- `src/manifest.chrome.json` / `src/manifest.firefox.json` - Extension manifests
+- `src/popup/Popup.svelte` - Main UI component
+- `src/popup/popup.html` - HTML entry point
+- `src/popup/popup.js` - JavaScript entry point
 
 **Responsibilities:**
-- Display UI to users
-- Collect seller listing page URLs from user (minimum 2)
-- Send requests to local backend server
-- Display grouped results from server
-- Handle user interactions
-- Persist saved URLs to storage
+- Display product list with names and seller counts
+- Provide "Add to comparison" button to trigger scraping
+- Provide "Calculate" button to find common sellers
+- Store and retrieve product data from chrome.storage
+- Display seller analysis in browser console
 
-### 2. Backend Server
+### 2. Content Script
 
-**Location:** `server/`
+**Location:** `src/content/`
 
 **Technologies:**
-- Node.js + Express.js
-- node-fetch for HTTP requests
-- Cheerio for HTML parsing
-- CORS middleware
-- dotenv for configuration
+- Vanilla JavaScript
+- DOM manipulation and querying
 
 **Key Files:**
-- `server/server.js` - Main server implementation (parsing logic)
-- `server/.env` - Optional configuration (port, API key)
-- `server/package.json` - Dependencies
+- `src/content/content.js` - Page scraping logic
 
 **Responsibilities:**
-- Fetch seller listing pages from Allegro
-- Parse HTML to extract seller names
-- Track seller frequency across products
-- Find intersections between seller lists
-- Group sellers by frequency
-- Handle CORS properly
-- Provide clear error messages
+- Scrape product name from current page
+- Extract seller names using CSS selectors
+- Respond to messages from popup
+- Return scraped data to popup
+
+### 3. Background Script
+
+**Location:** `src/background/`
+
+**Key Files:**
+- `src/background/background.js` - Minimal background worker
+
+**Responsibilities:**
+- Listen for extension installation
+- Can be extended for notifications, badges, etc.
+- Currently minimal implementation
 
 ## Data Flow
 
 ```
 ┌─────────────────────────────────────┐
-│  User finds seller listing pages    │
-│  on Allegro (minimum 2)             │
+│  User navigates to Allegro product  │
+│  page with seller listings          │
 └────────┬────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────┐
-│  Browser Extension Popup            │
-│  - User pastes seller listing URLs  │
-│  - Clicks "Find Common Sellers"     │
+│  User clicks extension icon         │
+│  Popup opens                        │
 └────────┬────────────────────────────┘
          │
-         │ POST /api/sellers/find-common
-         │ { urls: [url1, url2, ...] }
          ▼
 ┌─────────────────────────────────────┐
-│  Backend Server (localhost:3000)    │
-│  1. For each URL:                   │
-│     - Fetch page HTML               │
-│     - Parse with Cheerio            │
-│     - Extract seller names          │
-│  2. Track seller frequency          │
-│  3. Find intersections              │
-│  4. Group by frequency              │
+│  User clicks "Add to comparison"    │
 └────────┬────────────────────────────┘
          │
-         │ HTTP GET (for each URL)
+         │ chrome.tabs.sendMessage()
          ▼
 ┌─────────────────────────────────────┐
-│  Allegro.pl Website                 │
-│  - Returns HTML pages               │
+│  Content Script (on page)           │
+│  - Scrapes product name             │
+│  - Scrapes seller names             │
+│  - Returns data                     │
 └────────┬────────────────────────────┘
          │
-         │ HTML content
+         │ { productName, sellers, sellersCount }
          ▼
 ┌─────────────────────────────────────┐
-│  Backend Server                     │
-│  - Parses seller names from HTML    │
+│  Popup                              │
+│  - Stores product in                │
+│    chrome.storage.local             │
+│  - Displays product row             │
+└────────┬────────────────────────────┘
+         │
+         │ User repeats for more products
+         ▼
+┌─────────────────────────────────────┐
+│  User clicks "Calculate"            │
+│  (when 2+ products added)           │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  Popup calculates common sellers    │
 │  - Groups sellers by frequency      │
-│  - Returns formatted response       │
-└────────┬────────────────────────────┘
-         │
-         │ {
-         │   groupedByFrequency: [...],
-         │   commonSellers: [...]
-         │ }
-         ▼
-┌─────────────────────────────────────┐
-│  Extension Popup                    │
-│  - Displays sellers grouped by      │
-│    frequency (most common first)    │
-│  - Shows clickable links            │
+│  - Logs results to console          │
 └─────────────────────────────────────┘
 ```
 
-## Why This Architecture?
+## Architecture Benefits
 
-### Problem 1: No Public API for Seller Listings
+### No Backend Server
+- **Simpler Setup**: No need to run and maintain a server
+- **Faster**: Direct DOM scraping without network roundtrips
+- **More Reliable**: No server downtime or connection issues
+- **Privacy**: All data stays local in the browser
 
-Allegro doesn't provide a public API endpoint to retrieve all sellers for a given product without authentication complexities.
+### Client-Side Scraping
+- **Real-time**: Scrapes current page state
+- **Accurate**: Gets data directly from DOM
+- **No CORS Issues**: Content script runs in page context
 
-### Problem 2: CORS Restrictions
+### Storage Strategy
+- **chrome.storage.local**: Persists product data across sessions
+- **Data Structure**: `{ id, name, sellers: [], sellersCount }`
+- **Simple**: No complex state management needed
 
-Browsers prevent extensions from directly fetching and parsing external website content due to CORS (Cross-Origin Resource Sharing) security policies.
+## Key Selectors
 
-### Solution: Local Backend Server
+### Product Name
+```javascript
+document.querySelectorAll('h1[data-analytics-click-label="flashcard-title"]')
+```
 
-By running a local Node.js server:
-1. **Bypasses CORS** - The extension calls `localhost:3000` (same origin is allowed)
-2. **Server-to-Server** - The backend makes standard HTTPS calls to Allegro (no CORS restrictions)
-3. **HTML Parsing** - Server can parse HTML content using Cheerio
-4. **No Authentication Needed** - No Allegro API credentials required
-5. **Better Error Handling** - Server can provide detailed error messages
-6. **Flexible Parsing** - Can adjust selectors as needed without rebuilding extension
+### Seller Names
+```javascript
+document.querySelectorAll('span.mgmw_wo')
+```
+
+With validation logic:
+- Check previous sibling for "od" text
+- Or check parent's previous sibling for "Super Sprzedawcy"
 
 ## Security Considerations
 
-### No Credentials Required
+### Content Script Permissions
+- Runs only on `https://allegro.pl/*` domains
+- Minimal permissions required
+- No external network requests
 
-✅ **Advantages:**
-- No Allegro API credentials needed
-- No OAuth flow to manage
-- Simple setup for users
-- No risk of credential exposure
+### Data Storage
+- All data stored locally in browser
+- No transmission to external servers
+- User can clear data by removing extension
 
-### API Key Protection (Optional)
-
-The server supports an optional `API_KEY` in `server/.env`:
-
-```env
-API_KEY=your_random_key_here
-```
-
-When set:
-- Extension must send `X-API-Key` header with every request
-- Server validates the key before processing requests
-- Prevents unauthorized access to your server
-
-This is optional because:
-- The server only runs locally (localhost)
-- Useful if you want extra security or deploy the server remotely
-
-### Web Scraping Considerations
-
-- The server fetches public Allegro pages (no authentication required)
-- Uses proper User-Agent headers
-- Respects Allegro's publicly accessible content
-- If Allegro changes their HTML structure, parsing may break
-
-## Configuration Files
-
-### Extension Environment (`.env`)
-
-```env
-VITE_PROXY_URL=http://localhost:3000
-```
-
-- Vite replaces `import.meta.env.VITE_PROXY_URL` during build
-- Change this if your server runs on a different port
-- Requires rebuild after changes
-
-### Server Environment (`server/.env`)
-
-```env
-PORT=3000
-API_KEY=optional_api_key
-NODE_ENV=development
-```
-
-- Server reads these on startup (all optional)
-- Restart server after changes
-- Never commit this file to git if it contains sensitive data
-
-## API Endpoints
-
-### Extension → Backend Server
-
-#### POST /api/sellers/find-common
-
-**Request:**
-```json
-{
-  "urls": [
-    "https://allegro.pl/.../seller-listing-page-1",
-    "https://allegro.pl/.../seller-listing-page-2"
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "commonSellers": [
-    {
-      "name": "seller_name",
-      "url": "https://allegro.pl/uzytkownik/seller_name"
-    }
-  ],
-  "totalCommon": 1,
-  "groupedByFrequency": [
-    {
-      "frequency": 2,
-      "totalProducts": 2,
-      "sellers": [
-        {
-          "name": "seller_appearing_in_both",
-          "url": "https://allegro.pl/uzytkownik/seller_appearing_in_both"
-        }
-      ]
-    },
-    {
-      "frequency": 1,
-      "totalProducts": 2,
-      "sellers": [...]
-    }
-  ],
-  "products": [
-    {
-      "url": "https://allegro.pl/.../seller-listing-page-1",
-      "sellerCount": 5,
-      "sellers": ["seller1", "seller2", ...]
-    }
-  ],
-  "processedCount": 2
-}
-```
-
-#### GET /health
-
-Check server status.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-01-01T12:00:00.000Z"
-}
-```
-
-## Error Handling
-
-### Extension Level
-
-- Check if backend server is reachable
-- Display user-friendly error messages
-- Log errors to browser console
-- Validate minimum 2 URLs requirement
-
-### Server Level
-
-- Validate request parameters (minimum 2 URLs)
-- Catch HTTP fetch errors
-- Catch HTML parsing errors
-- Return appropriate HTTP status codes
-- Log errors to server console with details
-
-### Common Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| Cannot connect to server | Server not running | Start server: `cd server && npm start` |
-| At least 2 URLs required | Less than 2 URLs provided | Add more seller listing URLs |
-| No sellers found | Parsing failed | Check server logs, HTML structure may have changed |
-| Failed to fetch page | Network error or invalid URL | Verify URLs are accessible |
+### XSS Protection
+- Content script doesn't inject HTML
+- Only reads DOM, doesn't modify it
+- Popup sanitizes displayed data
 
 ## Performance Optimizations
 
-### Parallel Page Fetching (Future)
+### Efficient Selectors
+- Uses specific CSS selectors for fast queries
+- Minimal DOM traversal
+- Set-based deduplication
 
-Currently pages are fetched sequentially. Could be improved:
+### Storage
+- Stores only essential data (names, seller lists)
+- No redundant information
+- Efficient JSON serialization
 
-```javascript
-const sellerLists = await Promise.all(
-  urls.map(url => parseSellersPage(url))
-);
-```
+### Memory
+- Products stored in storage, not in memory
+- Loaded on-demand when popup opens
+- Minimal background script footprint
 
-- Fetches all pages simultaneously
-- Significantly faster than sequential requests
-- Takes advantage of Node.js async capabilities
+## Error Handling
 
-### Set-based Intersection
+### Content Script
+- Checks if elements exist before accessing
+- Returns null for missing data
+- Handles edge cases (no sellers, no name)
 
-```javascript
-let commonSellerNames = allSellerSets[0];
-for (let i = 1; i < allSellerSets.length; i++) {
-  commonSellerNames = new Set(
-    [...commonSellerNames].filter((name) => allSellerSets[i].has(name))
-  );
-}
-```
+### Popup
+- Validates page URL before scraping
+- Displays error messages to user
+- Handles empty/invalid data gracefully
 
-- Uses JavaScript Set for efficient lookups
-- O(n*m) complexity where n = sellers, m = products
+### Common Errors
+| Error | Cause | Solution |
+|-------|-------|----------|
+| No product data found | Not on seller listing page | Navigate to correct page type |
+| Cannot read properties | Page structure changed | Update selectors in content script |
+| At least 2 products required | Only 1 product added | Add more products |
 
-### Future Optimizations
+## Future Enhancements
 
-- [ ] Cache parsed results to avoid re-fetching same pages
-- [ ] Parallel page fetching with Promise.all
-- [ ] Request deduplication for duplicate URLs
-- [ ] Add Redis for distributed caching
-- [ ] Rate limiting to avoid overwhelming Allegro servers
+- [ ] Display results in popup UI instead of console
+- [ ] Export results to clipboard
+- [ ] Price comparison feature
+- [ ] Product thumbnails
+- [ ] Seller profile links
+- [ ] Dark mode
+- [ ] Import/export product lists
 
-## Development Workflow
+## Build Process
 
-### Building Extension
-
+### Using Docker Utility Container
 ```bash
-# Development (watch mode)
-npm run dev
+# Install dependencies
+docker compose run --rm npm install
 
-# Production
-npm run build
-npm run build:firefox
+# Build for Chrome
+docker compose run --rm npm run build
+
+# Build for Firefox
+docker compose run --rm npm run build:firefox
 ```
 
-### Running Server
+### Build Output
+- **Chrome**: `dist-chrome/` directory
+- **Firefox**: `dist-firefox/` directory
+- Contains bundled JS, HTML, icons, and manifest
 
-```bash
-# Development (with auto-reload)
-cd server && npm run dev
-
-# Production
-cd server && npm start
-```
-
-### Making Changes
-
-1. **Extension code changes** (`src/`):
-   - Edit files
-   - Vite auto-rebuilds (in dev mode)
-   - Reload extension in browser
-
-2. **Server code changes** (`server/`):
-   - Edit `server.js`
-   - Nodemon auto-restarts (in dev mode)
-   - No browser reload needed
-
-3. **Environment changes** (`.env`):
-   - Extension: Rebuild required
-   - Server: Restart required
-
-## Deployment Considerations
-
-### Current Setup (Local Only)
-
-- Server runs on `localhost:3000`
-- Extension connects to `http://localhost:3000`
-- Both must run on same machine
-
-### Remote Deployment (Future)
-
-To deploy the proxy server remotely:
-
-1. **Host the server** (e.g., Heroku, DigitalOcean, AWS)
-2. **Update `.env`**:
-   ```env
-   VITE_PROXY_URL=https://your-server.com
-   ```
-3. **Rebuild extension**
-4. **Update CORS settings** in server to allow extension origin
-5. **Add authentication** (API key becomes essential)
-6. **Use HTTPS** (required for production)
-
-Challenges:
-- Browser extensions require HTTPS for remote connections
-- Need to manage API rate limits across users
-- Security becomes more critical
-
-## Testing
-
-### Manual Testing
-
-1. **Test health endpoint:**
-   ```bash
-   curl http://localhost:3000/health
-   ```
-
-2. **Test seller lookup:**
-   ```bash
-   curl -X POST http://localhost:3000/api/sellers/find-common \
-     -H "Content-Type: application/json" \
-     -d '{"urls":["https://allegro.pl/oferta/product-12345"]}'
-   ```
-
-3. **Test extension:**
-   - Go to Allegro product page
-   - Open extension popup
-   - Add products and search
-
-### Unit Testing (Future)
-
-- [ ] Jest for server logic
-- [ ] Vitest for extension components
-- [ ] Mock Allegro API responses
-- [ ] Test error scenarios
-
-## Monitoring
-
-### Server Logs
-
-The server logs:
-- Token refresh events
-- Incoming requests
-- API errors
-- Cache hits/misses
-
-### Browser Console
-
-The extension logs:
-- Proxy connection status
-- Request/response data
-- User actions
-- Errors
-
-## Troubleshooting
-
-See [README.md](README.md#troubleshooting) for common issues and solutions.
+### Technologies
+- **Vite**: Bundler and dev server
+- **Svelte**: UI framework
+- **vite-plugin-web-extension**: Manifest processing
+- **Docker**: Utility container for npm commands

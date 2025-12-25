@@ -52,7 +52,6 @@ export default defineConfig(({ mode }) => {
         watchFilePaths: ['src/**/*'],
         browser: isFirefox ? 'firefox' : 'chrome'
       }),
-      copyToExtFolder('/mnt/d/ext')
     ],
     build: {
       outDir: isFirefox ? 'dist-firefox' : 'dist-chrome',

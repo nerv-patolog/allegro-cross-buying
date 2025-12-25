@@ -22,6 +22,13 @@
     "service_worker": "src/background/background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://allegro.pl/*"],
+      "js": ["src/content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
