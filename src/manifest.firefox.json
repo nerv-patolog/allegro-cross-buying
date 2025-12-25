@@ -1,0 +1,27 @@
+{
+  "manifest_version": 2,
+  "name": "Allegro Seller Finder",
+  "version": "0.0.1",
+  "description": "Find common sellers across Allegro products to optimize delivery fees",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "https://allegro.pl/*"
+  ],
+  "browser_action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "scripts": ["src/background/background.js"]
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

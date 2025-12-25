@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Allegro Seller Finder - Test</title>
+  <script type="module">
+    // Mock Chrome APIs for testing
+    window.chrome = {
+      storage: {
+        local: {
+          data: {},
+          async get(keys) {
+            const result = {};
+            if (Array.isArray(keys)) {
+              keys.forEach(key => {
+                if (this.data[key]) result[key] = this.data[key];
+              });
+            }
+            return result;
+          },
+          async set(items) {
+            Object.assign(this.data, items);
+            console.log('Storage saved:', items);
+          },
+          async remove(keys) {
+            if (Array.isArray(keys)) {
+              keys.forEach(key => delete this.data[key]);
+            }
+          }
+        }
+      },
+      tabs: {
+        async query(queryInfo) {
+          return [{
+            url: 'https://allegro.pl/oferta/test-product-12345',
+            active: true
+          }];
+        }
+      },
+      runtime: {
+        async sendMessage(message) {
+          console.log('Message sent:', message);
+          // Simulate response
+          return {
+            results: [
+              { id: '1', name: 'Test Seller 1', url: 'https://allegro.pl/uzytkownik/1' },
+              { id: '2', name: 'Test Seller 2', url: 'https://allegro.pl/uzytkownik/2' }
+            ]
+          };
+        }
+      }
+    };
+
+    console.log('Chrome API mocked successfully');
+  </script>
+  <script type="module" crossorigin src="dist-chrome/src/popup/popup.js"></script>
+  <link rel="modulepreload" crossorigin href="dist-chrome/lifecycle.js">
+  <link rel="stylesheet" crossorigin href="dist-chrome/popup.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    console.log('Page loaded, app div:', document.getElementById('app'));
+  </script>
+</body>
+</html>
