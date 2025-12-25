@@ -3,7 +3,9 @@
 
 // Function to scrape product name from the page
 function scrapeProductName() {
-    const productNameElements = document.querySelectorAll('h1[data-analytics-click-label="flashcard-title"]');
+    const productNameElements = document.querySelectorAll(
+        'h1[data-analytics-click-label="flashcard-title"]'
+    );
     if (productNameElements.length > 0) {
         return productNameElements[0].textContent.trim();
     }
@@ -26,7 +28,8 @@ function scrapeSellers() {
         const prevSiblingText = prevSibling ? prevSibling.textContent.trim() : '';
 
         // Check parent's previous sibling for 'Super Sprzedawcy'
-        const parentPrevSibling = parentElem.parentElement?.previousElementSibling?.previousElementSibling;
+        const parentPrevSibling =
+            parentElem.parentElement?.previousElementSibling?.previousElementSibling;
         const parentPrevSiblingText = parentPrevSibling ? parentPrevSibling.textContent.trim() : '';
 
         // Add seller if it matches the pattern
@@ -49,8 +52,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         sendResponse({
             productName: productName,
-            sellers: sellers,
-            sellersCount: sellers.length
+            sellers: sellers
         });
     }
     return true; // Keep the message channel open for async response
