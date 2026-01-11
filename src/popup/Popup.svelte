@@ -1,7 +1,7 @@
 <script>
     import { onMount } from 'svelte';
 
-    let products = []; // Array of {id, name, sellers: [...], sellersCount}
+    let products = []; // Array of {id, name, sellers: [...]}
     let error = '';
     let isAdding = false;
     let commonSellersData = []; // Array of {seller, products: [product names]}
@@ -14,7 +14,7 @@
 
     async function loadProducts() {
         const stored = await chrome.storage.local.get(['products']);
-        if (stored.products && stored.products.length > 0) {
+        if (stored.products?.length > 0) {
             products = stored.products;
         }
     }

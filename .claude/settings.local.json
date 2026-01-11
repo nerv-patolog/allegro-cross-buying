@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(git restore:*)",
+      "Bash(npx vitest:*)",
+      "Bash(code --list-extensions:*)",
+      "Bash(echo:*)"
+    ]
+  }
+}

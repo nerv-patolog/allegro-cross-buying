@@ -83,7 +83,7 @@ Allegro Seller Finder is a **client-side browser extension** that scrapes seller
 │  - Returns data                     │
 └────────┬────────────────────────────┘
          │
-         │ { productName, sellers, sellersCount }
+         │ { productName, sellers }
          ▼
 ┌─────────────────────────────────────┐
 │  Popup                              │
@@ -122,7 +122,7 @@ Allegro Seller Finder is a **client-side browser extension** that scrapes seller
 
 ### Storage Strategy
 - **chrome.storage.local**: Persists product data across sessions
-- **Data Structure**: `{ id, name, sellers: [], sellersCount }`
+- **Data Structure**: `{ id, name, sellers: [] }`
 - **Simple**: No complex state management needed
 
 ## Key Selectors
