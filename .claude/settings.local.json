@@ -5,7 +5,10 @@
       "Bash(git restore:*)",
       "Bash(npx vitest:*)",
       "Bash(code --list-extensions:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ]
   }
 }
